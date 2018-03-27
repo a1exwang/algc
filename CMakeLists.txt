@@ -9,6 +9,11 @@ add_library(
         gc.h
 )
 
+add_library(
+        allog
+        log.cpp
+)
+
 add_executable(
         algc_test
         gc_test.cpp
@@ -45,4 +50,4 @@ add_executable(
         mark_test
         mark_test.cpp
 )
-target_link_libraries(mark_test algc pmemobj pmempool pmem)
+target_link_libraries(mark_test algc allog pmemobj pmempool pmem)

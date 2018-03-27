@@ -84,6 +84,10 @@ struct AlgcBlock {
 
   pmem::obj::persistent_ptr<char[]> data;
 
+  void setBackPmemPtr(PMEMoid oid) { *reinterpret_cast<PMEMoid*>(data.get()) = oid; }
+  static PMEMoid getBackPmemPtr(void *ptr) { return *reinterpret_cast<PMEMoid*>(ptr); }
+  PMEMoid getBackPmemPtr() { return getBackPmemPtr(this->data.get()); }
+
   void doMark(std::function<void (pmem::obj::persistent_ptr<void>)> markCallback);
 
   static pmem::obj::persistent_ptr<AlgcBlock> getBlockByDataPtr(const char *data) {
@@ -92,6 +96,13 @@ struct AlgcBlock {
   int id;
 };
 
+template <typename T>
+struct AlgcPmemObj {
+  PMEMoid oid;
+  T data;
+
+  pmem::obj::persistent_ptr<AlgcBlock> block() const { return pmem::obj::persistent_ptr<AlgcBlock>(oid); }
+};
 
 struct AlgcPmemRoot {
   pmem::obj::persistent_ptr<AlgcBlock> rootAllObjs;
@@ -123,23 +134,22 @@ public:
   );
 
   template<typename T>
-  pmem::obj::persistent_ptr<T> allocate(const uint64_t *pointerOffsets, int64_t nOffsets) {
+  pmem::obj::persistent_ptr<AlgcPmemObj<T>> allocate(const uint64_t *pointerOffsets, int64_t nOffsets) {
     auto block = this->allocate(sizeof(T), pointerOffsets, nOffsets);
-    auto ret = pmem::obj::persistent_ptr<T>(block->data.raw());
+    auto ret = pmem::obj::persistent_ptr<AlgcPmemObj<T>>(block->data.raw());
     // Placement new operator
-    new (ret.get()) T();
+    new (&ret.get()->data) T();
     return ret;
   }
 
   void doGc();
   void doMark();
-  void appendRootGc(pmem::obj::persistent_ptr<AlgcBlock> anotherRoot);
-  void clearRootGc();
   pmem::obj::pool<AlgcPmemRoot> &getPool() { return pool; }
 
   std::function<void (pmem::obj::persistent_ptr<void>)> sweepCallback;
   std::function<void (pmem::obj::persistent_ptr<void>)> markCallback;
 
+  std::function<pmem::obj::persistent_ptr<AlgcBlock> *(uint64_t&)> gcRootsCallback;
 public:
   std::string poolName;
   std::string layoutName;
