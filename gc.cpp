@@ -202,7 +202,7 @@ pmem::obj::persistent_ptr<AlgcBlock> AlgcBlock::detach() {
   this->prev->next = this->next;
   this->next = nullptr;
   this->prev = nullptr;
-  return next;
+  return ret;
 }
 
 pmem::obj::persistent_ptr<AlgcBlock> AlgcBlock::createFromDataPtr(void *p, uint64_t size) {

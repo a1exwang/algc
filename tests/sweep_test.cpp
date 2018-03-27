@@ -18,11 +18,16 @@ AlLogger::Logger logger(cerr);
 
 
 int main() {
-  Algc gc("mark_test", "mark_test", 1048576*100, Algc::TriggerOptions::OnAllocation, 100000);
+  Algc gc("sweep_test", "sweep_test", 1048576*100, Algc::TriggerOptions::OnAllocation, 100000);
   gc.markCallback = [&](pmem::obj::persistent_ptr<void> _node) -> void {
     pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> node(_node.raw());
     logger.i() << "mark id=" << node->data.data << "\n";
   };
+  gc.sweepCallback = [&](pmem::obj::persistent_ptr<void> _node) -> void {
+    pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> node(_node.raw());
+    logger.i() << "sweep id=" << node->data.data << "\n";
+  };
+
   uint64_t offsets[] = {(uint64_t)offsetOf(&SingleListNode::next)};
 
   /** User code */
@@ -32,6 +37,7 @@ int main() {
   head->data.data = -1;
   head->data.next = nullptr;
 
+  vector<pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>>> ptrs;
   for (int i = 0; i < 10; ++i) {
     auto newNode = gc.allocate<SingleListNode>(offsets, 1);
     auto nodeBlock = newNode->block();
@@ -43,6 +49,7 @@ int main() {
       node->data.next = newNode;
       node = newNode;
     });
+    ptrs.push_back(newNode);
   }
 
   for (auto item : *gc.poolRoot->rootAllObjs) {
@@ -51,12 +58,11 @@ int main() {
 
   pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> n = head;
   while(n != nullptr) {
-    logger.i() << AlLogger::stdsprintf(
-        "my list data=%d, blk_oid=(%lx, %lx), user_oid=(%lx, %lx)\n",
-        n->data.data,
-        n->oid.pool_uuid_lo, n->oid.off,
-        n->block()->data.raw().pool_uuid_lo, n->block()->data.raw().off
-    );
+    logger.i() << "SingleListNode: data=" << n->data.data
+               << ", blk_oid=(" << std::hex << n->oid.pool_uuid_lo << ", "
+               << std::hex << n->oid.off << "), user_oid=("
+               << std::hex << n->block()->data.raw().pool_uuid_lo << ", "
+               << std::hex << n->block()->data.raw().off << ")\n";
     n = n->data.next;
   }
 
@@ -69,6 +75,7 @@ int main() {
     n = 1;
     return roots1.get();
   };
+  ptrs[5]->data.next = nullptr;
 
   gc.doGc();
 }
