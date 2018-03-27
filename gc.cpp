@@ -9,7 +9,7 @@
 
 
 #include "gc.h"
-#include "log.h"
+#include "misc/log.h"
 
 using namespace std;
 

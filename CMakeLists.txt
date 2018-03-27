@@ -11,7 +11,7 @@ add_library(
 
 add_library(
         allog
-        log.cpp
+        misc/log.cpp
 )
 
 add_executable(
@@ -26,7 +26,7 @@ target_link_libraries(
 add_executable(
         algc_perf
         gc_perf.cpp
-        tools.cpp
+        misc/tools.cpp
 )
 target_link_libraries(
         algc_perf
@@ -40,14 +40,4 @@ add_executable(
 )
 target_link_libraries(pm_gc pmemobj pmempool pmem)
 
-add_executable(
-        list_test
-        list_test.cpp
-)
-target_link_libraries(list_test algc pmemobj pmempool pmem)
-
-add_executable(
-        mark_test
-        mark_test.cpp
-)
-target_link_libraries(mark_test algc allog pmemobj pmempool pmem)
+add_subdirectory(tests)

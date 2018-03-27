@@ -1,4 +1,4 @@
-#include "gc.h"
+#include "../gc.h"
 #include <libpmemobj++/make_persistent_array.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <iostream>

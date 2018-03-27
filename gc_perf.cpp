@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cstdio>
 #include "gc.h"
-#include "tools.h"
+#include "misc/tools.h"
 #include <cstring>
 #include <memory>
 #include <algorithm>
