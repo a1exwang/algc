@@ -32,6 +32,7 @@ void unattachNode(ListNode *node) {
 int main() {
   Algc gc(Algc::Manual, 0);
 
+
   auto root = gc.allocate(sizeof(ListNode), {(uint64_t)&((ListNode*)0)->next});
   ListNode *rootList = (ListNode*)root->data;
 

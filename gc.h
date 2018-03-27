@@ -7,7 +7,9 @@
 struct AlgcBlock {
   bool mark;
   uint64_t dataSize;
-  std::vector<uint64_t> pointerOffsets;
+//  std::vector<uint64_t> pointerOffsets;
+  const uint64_t *pointerOffsets;
+  int64_t nOffsets;
   char data[0];
 
   void doMark();
@@ -25,14 +27,17 @@ public:
 
   AlgcBlock *allocate(
       uint64_t size,
-      std::vector<uint64_t> pointerOffsets
+//      std::vector<uint64_t> &&pointerOffsets
+      const uint64_t *pointerOffsets,
+      int64_t nOffsets
   );
 
   void doGc();
-  void setGetRoots(std::function<std::vector<AlgcBlock*>()> getRoots) { this->getRoots = getRoots; }
+//  void setGetRoots(std::function<std::vector<AlgcBlock*>()> getRoots) { this->getRoots = getRoots; }
+  std::vector<AlgcBlock*> roots;
 private:
   std::list<AlgcBlock*> blocks;
   TriggerOptions options;
-  std::function<std::vector<AlgcBlock*>()> getRoots;
+//  std::function<std::vector<AlgcBlock*>()> getRoots;
   int gcBlockCountThreshold;
 };

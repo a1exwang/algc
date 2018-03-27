@@ -42,8 +42,10 @@ void unattachNode(Ptr node) {
   node->prev = nullptr;
 }
 
+uint64_t offsets[] = {(uint64_t)&((ListNode*)0)->next};
+
 ListNode *newNodeWithGc(Algc &gc) {
-  auto block = gc.allocate(sizeof(ListNode), {(uint64_t)&((ListNode*)0)->next});
+  auto block = gc.allocate(sizeof(ListNode), offsets, 1);
   return (ListNode*)block->data;
 }
 std::shared_ptr<ListNodeSp> newNode() {
@@ -53,14 +55,15 @@ std::shared_ptr<ListNodeSp> newNode() {
 int64_t testGc(int totalObjects, int gcThreshold) {
   Algc gc(Algc::TriggerOptions::OnAllocation, gcThreshold);
 
-  auto block = gc.allocate(sizeof(ListNode), {(uint64_t)&((ListNode*)0)->next});
+  auto block = gc.allocate(sizeof(ListNode), offsets, 1);
   auto root = (ListNode*) block->data;
   root->next = root;
   root->prev = root;
 
-  gc.setGetRoots([&block]() -> vector<AlgcBlock*> {
-    return {block};
-  });
+//  gc.setGetRoots([&block]() -> vector<AlgcBlock*> {
+//    return {block};
+//  });
+  gc.roots.push_back(block);
 
   return stopWatch([&gc, &root, totalObjects]() -> void {
     for (int i = 0; i < totalObjects; ++i) {
@@ -88,7 +91,7 @@ int64_t testSp(int totalObjects) {
 
 int main() {
   std::pair<int64_t, int64_t> data[32];
-  int pts = 15;
+  int pts = 20;
   for (int i = 0; i <= pts; ++i) {
     auto totalObjecst = 2 << i;
     auto gcThreshold = std::max({1024, (2 << i) >> 2});
@@ -97,6 +100,6 @@ int main() {
     data[i] = {t1, t2};
   }
   for (int i = 0; i <= pts; ++i) {
-    printf("%02d: % 8ld % 8ld\n", i, data[i].first, data[i].second);
+    printf("%02d, % 8ld, % 8ld\n", i, data[i].first, data[i].second);
   }
 }
