@@ -36,7 +36,13 @@ add_executable(
 target_link_libraries(pm_gc pmemobj pmempool pmem)
 
 add_executable(
-        gctest1
+        list_test
         list_test.cpp
 )
-target_link_libraries(gctest1 algc pmemobj pmempool pmem)
+target_link_libraries(list_test algc pmemobj pmempool pmem)
+
+add_executable(
+        mark_test
+        mark_test.cpp
+)
+target_link_libraries(mark_test algc pmemobj pmempool pmem)

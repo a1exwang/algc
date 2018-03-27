@@ -11,6 +11,9 @@
 
 // This is a fixed size meta data struct for a memory block
 
+template<typename T, typename U> constexpr size_t offsetOf(U T::*member) {
+  return (char*)&((T*)nullptr->*member) - (char*)nullptr;
+}
 
 struct AlgcBlock {
   struct Iterator {
@@ -30,6 +33,10 @@ struct AlgcBlock {
     bool operator!=(const Iterator &rhs) {
       return this->obj != rhs.obj;
     }
+    Iterator detach() {
+      Iterator ret({this->obj->detach()});
+      return ret;
+    }
   };
 
   AlgcBlock(
@@ -44,6 +51,12 @@ struct AlgcBlock {
      data(data) { }
 
   static pmem::obj::persistent_ptr<AlgcBlock> createHead();
+  static pmem::obj::persistent_ptr<AlgcBlock> createFromDataPtr(void *, uint64_t size);
+
+  template <typename T>
+  static pmem::obj::persistent_ptr<AlgcBlock> createFromDataPtr(const T *p) {
+    return AlgcBlock::createFromDataPtr((void*)p, sizeof(T));
+  }
 
   Iterator begin() {
     return Iterator({this->next});
@@ -51,7 +64,6 @@ struct AlgcBlock {
   Iterator end() {
     return Iterator({this});
   }
-
   pmem::obj::persistent_ptr<AlgcBlock> append(
       uint64_t dataSize,
       pmem::obj::persistent_ptr<const uint64_t[]> pointerOffsets,
@@ -59,7 +71,7 @@ struct AlgcBlock {
       pmem::obj::persistent_ptr<char[]> data
   );
 
-  void detach();
+  pmem::obj::persistent_ptr<AlgcBlock> detach();
 
   pmem::obj::persistent_ptr<AlgcBlock> next;
   pmem::obj::persistent_ptr<AlgcBlock> prev;
@@ -106,18 +118,29 @@ public:
 
   pmem::obj::persistent_ptr<AlgcBlock> allocate(
       uint64_t size,
-      pmem::obj::persistent_ptr<const uint64_t[]> pointerOffsets,
+      const uint64_t pointerOffsets[],
       int64_t nOffsets
   );
 
+  template<typename T>
+  pmem::obj::persistent_ptr<T> allocate(const uint64_t *pointerOffsets, int64_t nOffsets) {
+    auto block = this->allocate(sizeof(T), pointerOffsets, nOffsets);
+    auto ret = pmem::obj::persistent_ptr<T>(block->data.raw());
+    // Placement new operator
+    new (ret.get()) T();
+    return ret;
+  }
+
   void doGc();
+  void doMark();
   void appendRootGc(pmem::obj::persistent_ptr<AlgcBlock> anotherRoot);
   void clearRootGc();
   pmem::obj::pool<AlgcPmemRoot> &getPool() { return pool; }
 
   std::function<void (pmem::obj::persistent_ptr<void>)> sweepCallback;
   std::function<void (pmem::obj::persistent_ptr<void>)> markCallback;
-private:
+
+public:
   std::string poolName;
   std::string layoutName;
   uint64_t maxSize;

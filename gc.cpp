@@ -16,7 +16,7 @@ using namespace std;
 pmem::obj::persistent_ptr<AlgcBlock>
 Algc::allocate(
     uint64_t size,
-    pmem::obj::persistent_ptr<const uint64_t[]> pointerOffsets,
+    const uint64_t pointerOffsets[],
     int64_t nOffsets) {
 
   if (this->options == TriggerOptions::OnAllocation) {
@@ -26,98 +26,53 @@ Algc::allocate(
   }
 
   pmem::obj::persistent_ptr<AlgcBlock> listNode(nullptr);
-  if (poolRoot->rootAllObjs == nullptr) {
-    pmem::obj::transaction::exec_tx(pool, [&] {
-      // `data` is user data
-      auto totalSize = size + sizeof(PMEMoid);
-      auto data = pmem::obj::make_persistent<char[]>(totalSize);
-      memset(data.get(), 0, size);
-      *reinterpret_cast<PMEMoid*>((char*)data.get()+size) = listNode.raw();
 
-      listNode = pmem::obj::make_persistent<AlgcBlock>(
-          nullptr,
-          nullptr,
-          totalSize,
-          pointerOffsets,
-          nOffsets,
-          data
-      );
-      assert(data != nullptr);
-      listNode->next = listNode;
-      listNode->prev = listNode;
-      (*poolRoot->blockCount)++;
-      this->poolRoot->rootAllObjs = listNode;
-    });
-  }
-  else {
-    pmem::obj::transaction::exec_tx(pool, [&] {
-      auto last2 = poolRoot->rootAllObjs->prev;
+  auto totalSize = size + sizeof(PMEMoid);
 
-      // `data` is user data
-      auto totalSize = size + sizeof(PMEMoid);
-      auto data = pmem::obj::make_persistent<char[]>(totalSize);
-      *reinterpret_cast<PMEMoid*>(data.get()) = listNode.raw();
-      memset(data.get(), 0, totalSize);
+  pmem::obj::transaction::exec_tx(this->pool, [&] {
+    auto data = pmem::obj::make_persistent<char[]>(totalSize);
+    memset(data.get(), 0, size);
 
-      listNode = pmem::obj::make_persistent<AlgcBlock>(
-          last2,
-          poolRoot->rootAllObjs,
-          totalSize,
-          pointerOffsets,
-          nOffsets,
-          data
-      );
+    auto persistentPointerOffsets = pmem::obj::make_persistent<uint64_t[]>((uint64_t)nOffsets);
+    memcpy(persistentPointerOffsets.get(), pointerOffsets, sizeof(uint64_t) * nOffsets);
 
-      last2->next = listNode;
-      poolRoot->rootAllObjs->prev = listNode;
-      (*poolRoot->blockCount)++;
-    });
+    listNode = this->poolRoot->rootAllObjs->append(
+        totalSize,
+        persistentPointerOffsets,
+        nOffsets,
+        data
+    );
+    *reinterpret_cast<PMEMoid*>((char*)data.get()+size) = listNode.raw();
 
-  }
+    (*poolRoot->blockCount)++;
+  });
 
   return listNode;
 }
 
 void Algc::doGc() {
-
-  // mark all nodes as `false`
-  auto node = this->poolRoot->rootAllObjs;
-  do {
-    node->mark = false;
-    node = node->next;
-  } while (node != this->poolRoot->rootAllObjs);
-
   // mark stage
-  node = this->poolRoot->rootGc;
-  if (node != nullptr) {
-    do {
-      node->doMark(this->markCallback);
-      node = node->next;
-    } while (node != this->poolRoot->rootGc);
-  }
+  this->doMark();
 
   // sweep stage
   int i = 0;
-  node = this->poolRoot->rootAllObjs;
-  do {
-    if (!node->mark) {
-      // cleanup node
-      i++;
+  auto it = this->poolRoot->rootAllObjs->begin(), itEnd = this->poolRoot->rootAllObjs->end();
+  while (it != itEnd) {
+    if (!(*it)->mark) {
       pmem::obj::transaction::exec_tx(pool, [&] {
-        node->prev->next = node->next;
-        node->next->prev = node->prev;
-
+        auto block = *it;
         if (sweepCallback) {
-          sweepCallback(node->data);
+          sweepCallback(block->data);
         }
-        pmem::obj::delete_persistent<char[]>(node->data, node->dataSize);
-        pmem::obj::delete_persistent<AlgcBlock>(node);
+        it = it.detach();
+        pmem::obj::delete_persistent<char[]>(block->data, block->dataSize);
+        pmem::obj::delete_persistent<AlgcBlock>(block);
         (*this->poolRoot->blockCount)--;
       });
     } else {
-      node = node->next;
+      it++;
     }
-  } while (node != this->poolRoot->rootAllObjs);
+  }
   cout << "gc " << i << " objects" << endl;
 }
 
@@ -162,24 +117,34 @@ Algc::~Algc() {
 
 
 void Algc::appendRootGc(pmem::obj::persistent_ptr<AlgcBlock> anotherRoot) {
-  if (this->poolRoot->rootGc  == nullptr) {
-    pmem::obj::transaction::exec_tx(pool, [&] {
-      this->poolRoot->rootGc = anotherRoot;
-      anotherRoot->next = anotherRoot;
-      anotherRoot->prev = anotherRoot;
-    });
-  } else {
-    pmem::obj::transaction::exec_tx(pool, [&] {
-      auto last2 = poolRoot->rootGc->prev;
-      last2->next = anotherRoot;
-      poolRoot->rootGc->prev = anotherRoot;
-    });
-  }
+  pmem::obj::transaction::exec_tx(pool, [&] {
+    auto last2 = poolRoot->rootGc->prev;
+    last2->next = anotherRoot;
+    poolRoot->rootGc->prev = anotherRoot;
+
+    anotherRoot->next = poolRoot->rootGc;
+    anotherRoot->prev = last2;
+  });
 }
 
 void Algc::clearRootGc() {
   this->poolRoot->rootGc = nullptr;
 }
+
+void Algc::doMark() {
+  // mark all nodes as `false`
+  for (auto item : *this->poolRoot->rootAllObjs) {
+    item->mark = false;
+    cout << "mark false " << item->id << endl;
+  }
+
+  // mark stage
+  for (auto item : *this->poolRoot->rootGc) {
+    item->doMark(this->markCallback);
+  }
+
+}
+
 
 void AlgcBlock::doMark(std::function<void (pmem::obj::persistent_ptr<void>)> markCallback) {
   // prevent loop pointers
@@ -223,9 +188,16 @@ pmem::obj::persistent_ptr<AlgcBlock> AlgcBlock::createHead() {
   return ret;
 }
 
-void AlgcBlock::detach() {
+pmem::obj::persistent_ptr<AlgcBlock> AlgcBlock::detach() {
+  auto ret = this->next;
   this->next->prev = this->prev;
   this->prev->next = this->next;
   this->next = nullptr;
   this->prev = nullptr;
+  return next;
+}
+
+pmem::obj::persistent_ptr<AlgcBlock> AlgcBlock::createFromDataPtr(void *p, uint64_t size) {
+  auto oid = *(PMEMoid*)((char*)p + size);
+  return pmem::obj::persistent_ptr<AlgcBlock>(oid);
 }
