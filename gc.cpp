@@ -30,23 +30,23 @@ Algc::allocate(
 
   auto totalSize = size + sizeof(PMEMoid);
 
-  pmem::obj::transaction::exec_tx(this->pool, [&] {
-    auto data = pmem::obj::make_persistent<char[]>(totalSize);
-    memset(data.get() + sizeof(PMEMoid), 0, size);
+//  pmem::obj::transaction::exec_tx(this->pool, [&] {
+  auto data = pmem::obj::make_persistent<char[]>(totalSize);
+  memset(data.get() + sizeof(PMEMoid), 0, size);
 
-    auto persistentPointerOffsets = pmem::obj::make_persistent<uint64_t[]>((uint64_t)nOffsets);
-    memcpy(persistentPointerOffsets.get(), pointerOffsets, sizeof(uint64_t) * nOffsets);
+  auto persistentPointerOffsets = pmem::obj::make_persistent<uint64_t[]>((uint64_t)nOffsets);
+  memcpy(persistentPointerOffsets.get(), pointerOffsets, sizeof(uint64_t) * nOffsets);
 
-    ret = this->poolRoot->rootAllObjs->append(
-        totalSize,
-        persistentPointerOffsets,
-        nOffsets,
-        data
-    );
-    ret->setBackPmemPtr(ret.raw());
+  ret = this->poolRoot->rootAllObjs->append(
+      totalSize,
+      persistentPointerOffsets,
+      nOffsets,
+      data
+  );
+  ret->setBackPmemPtr(ret.raw());
 
-    (*poolRoot->blockCount)++;
-  });
+  (*poolRoot->blockCount)++;
+//  });
 
   return ret;
 }
@@ -74,7 +74,7 @@ void Algc::doGc() {
       it++;
     }
   }
-  AlLogger::Logger::getStdErrLogger() <<  "gc " << i << " objects\n";
+  AlLogger::Logger::getStdErrLogger() <<  "Algc::doGc() deleted " << i << " objects\n";
 }
 
 Algc::Algc(
@@ -95,21 +95,17 @@ Algc::Algc(
   }
 
   this->poolRoot = this->pool.get_root();
-  if (this->poolRoot->blockCount == nullptr) {
-    pmem::obj::transaction::exec_tx(pool, [&]() -> void {
+  pmem::obj::transaction::exec_tx(pool, [&]() -> void {
+    if (this->poolRoot->blockCount == nullptr) {
       this->poolRoot->blockCount = pmem::obj::make_persistent<int64_t>(0);
-    });
-  }
-  if (this->poolRoot->rootAllObjs == nullptr) {
-    pmem::obj::transaction::exec_tx(pool, [&]() -> void {
+    }
+    if (this->poolRoot->rootAllObjs == nullptr) {
       this->poolRoot->rootAllObjs = AlgcBlock::createHead();
-    });
-  }
-  if (this->poolRoot->rootGc == nullptr) {
-    pmem::obj::transaction::exec_tx(pool, [&]() -> void {
+    }
+    if (this->poolRoot->rootGc == nullptr) {
       this->poolRoot->rootGc = AlgcBlock::createHead();
-    });
-  }
+    }
+  });
 }
 
 Algc::~Algc() {
@@ -117,6 +113,9 @@ Algc::~Algc() {
 }
 
 void Algc::doMark() {
+  /**
+   * We do not need transactions here, because we only update item->mark, which will not lose any information if lost.
+   */
   // mark all nodes as `false`
   for (auto item : *this->poolRoot->rootAllObjs) {
     item->mark = false;

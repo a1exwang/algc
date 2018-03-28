@@ -8,6 +8,7 @@
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/pool.hpp>
 #include <libpmemobj++/transaction.hpp>
+#include <functional>
 
 // This is a fixed size meta data struct for a memory block
 
@@ -134,12 +135,37 @@ public:
   );
 
   template<typename T>
-  pmem::obj::persistent_ptr<AlgcPmemObj<T>> allocate(const uint64_t *pointerOffsets, int64_t nOffsets) {
+  pmem::obj::persistent_ptr<AlgcPmemObj<T>> _allocate(
+      const uint64_t *pointerOffsets,
+      int64_t nOffsets,
+      std::function<void (pmem::obj::persistent_ptr<AlgcPmemObj<T>>&)> constructorCb) {
     auto block = this->allocate(sizeof(T), pointerOffsets, nOffsets);
     auto ret = pmem::obj::persistent_ptr<AlgcPmemObj<T>>(block->data.raw());
-    // Placement new operator
-    new (&ret.get()->data) T();
+    if (constructorCb)
+      constructorCb(ret);
     return ret;
+  }
+
+  template<typename T>
+  pmem::obj::persistent_ptr<AlgcPmemObj<T>> allocate(
+      const uint64_t *pointerOffsets,
+      int64_t nOffsets,
+      std::function<void (pmem::obj::persistent_ptr<AlgcPmemObj<T>>&)> constructorCb) {
+    return _allocate(pointerOffsets, nOffsets, [&](pmem::obj::persistent_ptr<AlgcPmemObj<T>>& p) -> void{
+      new (&p.get()->data) T();
+    });
+  }
+  /**
+   * Create a persistent object with its constructor
+   */
+  template <typename T, typename... Args>
+  pmem::obj::persistent_ptr<AlgcPmemObj<T>> allocate(
+      const uint64_t *pointerOffsets,
+      int64_t nOffsets,
+      Args&&... args) {
+    return _allocate<T>(pointerOffsets, nOffsets, [&](pmem::obj::persistent_ptr<AlgcPmemObj<T>>& p) -> void {
+      new (&p.get()->data) T(std::forward<Args>(args)...);
+    });
   }
 
   void doGc();

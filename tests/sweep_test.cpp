@@ -1,21 +1,15 @@
+#include "single_list.h"
 #include "../gc.h"
 #include "../misc/log.h"
+
 #include <libpmemobj++/make_persistent_array.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <iostream>
 
 using namespace std;
 
-#pragma pack(push, 1)
-struct SingleListNode {
-  SingleListNode() :next(nullptr), data(0) { }
-  pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> next;
-  int data;
-};
-#pragma pack(pop)
 
 AlLogger::Logger logger(cerr);
-
 
 int main() {
   Algc gc("sweep_test", "sweep_test", 1048576*100, Algc::TriggerOptions::OnAllocation, 100000);

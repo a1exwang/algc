@@ -3,19 +3,12 @@
 #include <libpmemobj++/make_persistent_array.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <iostream>
+#include "single_list.h"
 
 using namespace std;
 
-#pragma pack(push, 1)
-struct SingleListNode {
-  SingleListNode() :next(nullptr), data(0) { }
-  pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> next;
-  int data;
-};
-#pragma pack(pop)
 
 AlLogger::Logger logger(cerr);
-
 
 int main() {
   Algc gc("mark_test", "mark_test", 1048576*100, Algc::TriggerOptions::OnAllocation, 100000);
@@ -26,20 +19,20 @@ int main() {
   uint64_t offsets[] = {(uint64_t)offsetOf(&SingleListNode::next)};
 
   /** User code */
-  pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> head = gc.allocate<SingleListNode>(offsets, 1);
+  pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> head(nullptr);
+
+  pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
+    head = gc.allocate<SingleListNode>(offsets, 1, nullptr, -1);
+    head->block()->id = -1;
+  });
+
   auto node = head;
-  head->block()->id = -1;
-  head->data.data = -1;
-  head->data.next = nullptr;
-
   for (int i = 0; i < 10; ++i) {
-    auto newNode = gc.allocate<SingleListNode>(offsets, 1);
-    auto nodeBlock = newNode->block();
-    nodeBlock->id = i;
-
     pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
-      newNode->data.next = nullptr;
-      newNode->data.data = i;
+      auto newNode = gc.allocate<SingleListNode>(offsets, 1, nullptr, i);
+
+      newNode->block()->id = i;
+
       node->data.next = newNode;
       node = newNode;
     });

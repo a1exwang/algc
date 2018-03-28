@@ -1,18 +1,17 @@
 cmake_minimum_required(VERSION 3.0)
 project(algc)
 
-add_compile_options(-pg -g -O0)
+add_library(
+        allog
+        misc/log.cpp
+)
 
 add_library(
         algc
         gc.cpp
         gc.h
 )
-
-add_library(
-        allog
-        misc/log.cpp
-)
+target_link_libraries(algc allog)
 
 add_executable(
         algc_test
@@ -33,11 +32,5 @@ target_link_libraries(
         algc
         pmemobj pmempool pmem
 )
-
-add_executable(
-        pm_gc
-        pmgc.cpp
-)
-target_link_libraries(pm_gc pmemobj pmempool pmem)
 
 add_subdirectory(tests)
