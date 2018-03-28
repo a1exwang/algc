@@ -111,7 +111,6 @@ struct AlgcPmemRoot {
   pmem::obj::persistent_ptr<int64_t> blockCount;
 };
 
-
 class Algc {
 public:
   enum TriggerOptions {

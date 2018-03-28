@@ -13,6 +13,13 @@ add_library(
 )
 target_link_libraries(algc allog)
 
+add_library(
+        hash_table
+        hash_table.cpp
+        hash_table.h
+)
+target_link_libraries(hash_table allog)
+
 add_executable(
         algc_test
         gc_test.cpp
