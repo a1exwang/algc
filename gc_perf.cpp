@@ -10,11 +10,19 @@
 using namespace std;
 
 
+#pragma pack(push, 1)
 struct ListNode {
-  pmem::obj::persistent_ptr<ListNode> next;
-  pmem::obj::persistent_ptr<ListNode> prev;
+  ListNode() { }
+  ListNode(
+       pmem::obj::persistent_ptr<AlgcPmemObj<ListNode>> prev,
+       pmem::obj::persistent_ptr<AlgcPmemObj<ListNode>> next,
+       int data
+  ) :prev(prev), next(next), data(data) { }
+  pmem::obj::persistent_ptr<AlgcPmemObj<ListNode>> prev;
+  pmem::obj::persistent_ptr<AlgcPmemObj<ListNode>> next;
   int data;
 };
+#pragma pack(pop)
 
 struct ListNodeSp {
   std::shared_ptr<ListNodeSp> next;
@@ -48,38 +56,43 @@ void unattachNode(Ptr node) {
 uint64_t offsets[] = {(uint64_t)&((ListNode*)0)->next, (uint64_t)&((ListNode*)0)->prev};
 pmem::obj::persistent_ptr<uint64_t[]> pOffsets(nullptr);
 
-pmem::obj::persistent_ptr<ListNode> newNodeWithGc(Algc &gc) {
-  auto block = gc.allocate(sizeof(ListNode), pOffsets, 2);
-  return pmem::obj::persistent_ptr<ListNode>(block->data.raw());
-}
+static uint64_t myOffsets[] = {0, 16};
+
 std::shared_ptr<ListNodeSp> newNode() {
   return std::make_shared<ListNodeSp>();
 }
 
+pmem::obj::persistent_ptr<AlgcBlock> gcRoots[100];
+
 int64_t testGc(Algc &gc, int totalObjects, int gcThreshold) {
+  pmem::obj::persistent_ptr<AlgcPmemObj<ListNode>> root(nullptr);
   pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
-    pOffsets = pmem::obj::make_persistent<uint64_t[]>(2);
-    pOffsets[0] = offsets[0];
-    pOffsets[1] = offsets[1];
+    root = gc.allocate<ListNode>(myOffsets, 2);
+    root->data.next = root;
+    root->data.prev = root;
+    root->data.data = 123;
   });
 
-  pmem::obj::persistent_ptr<AlgcBlock> block = gc.allocate(sizeof(ListNode), pOffsets, 2);
-  auto root = pmem::obj::persistent_ptr<ListNode>(block->data.raw());
-
-  pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
-    root->next = root;
-    root->prev = root;
-    root->data = -1;
-  });
-
-//  gc.roots.push_back(block);
-  gc.appendRootGc(block);
+  gcRoots[0] = root->block();
+  gc.gcRootsCallback = [](uint64_t & n) -> pmem::obj::persistent_ptr<AlgcBlock>* {
+    n = 1;
+    return gcRoots;
+  };
 
   return stopWatch([&gc, &root, totalObjects]() -> void {
     for (int i = 0; i < totalObjects; ++i) {
-      auto p1 = newNodeWithGc(gc);
-      p1->data = i;
-      append(root, p1);
+      auto last2 = root->data.prev;
+      pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
+//        cout << "root " << root->oid.off << endl;
+        auto node = gc.allocate<ListNode>(myOffsets, 2);
+        node->data.next = root;
+        node->data.prev = last2;
+
+        root->data.prev = node;
+//        cout << last2->next.raw().off << endl;
+        last2->data.next = node;
+//        cout << last2->next.raw().off << endl;
+      });
     }
 //    gc.clearRootGc();
 
@@ -104,18 +117,18 @@ int64_t testSp(int totalObjects) {
 
 int main() {
 
-  Algc gc("testgc1", "testGc1", 1048576*100, Algc::TriggerOptions::OnAllocation, 100000);
+  Algc gc("test_file", "testGc1", 1048576*100, Algc::TriggerOptions::OnAllocation, 100000);
   gc.sweepCallback = [](pmem::obj::persistent_ptr<void> node) -> void {
     pmem::obj::persistent_ptr<ListNode> n(node.raw());
-    cout << "sweep for " << n->data << endl;
+//    cout << "sweep for " << n->data << endl;
   };
   gc.markCallback = [](pmem::obj::persistent_ptr<void> node) -> void {
     pmem::obj::persistent_ptr<ListNode> n(node.raw());
-    cout << "mark for " << n->data << endl;
+//    cout << "mark for " << n->data << endl;
   };
 
   std::pair<int64_t, int64_t> data[32];
-  int pts = 20;
+  int pts = 6;
   for (int i = 0; i <= pts; ++i) {
     auto totalObjecst = 2 << i;
     auto gcThreshold = std::max({1024, (2 << i) >> 2});

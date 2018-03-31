@@ -99,10 +99,10 @@ struct AlgcBlock {
 
 template <typename T>
 struct AlgcPmemObj {
-  PMEMoid oid;
+  PMEMoid blockOid;
   T data;
 
-  pmem::obj::persistent_ptr<AlgcBlock> block() const { return pmem::obj::persistent_ptr<AlgcBlock>(oid); }
+  pmem::obj::persistent_ptr<AlgcBlock> block() const { return pmem::obj::persistent_ptr<AlgcBlock>(blockOid); }
 };
 
 struct AlgcPmemRoot {

@@ -138,15 +138,16 @@ void Algc::doMark() {
 
 
 void AlgcBlock::doMark(std::function<void (pmem::obj::persistent_ptr<void>)> markCallback) {
-  AlLogger::Logger::getStdErrLogger().d()
-      << "AlgcBlock::doMark(): myBlockOid=("
-      << std::hex << this->getBackPmemPtr().pool_uuid_lo << ", "
-      << std::hex << this->getBackPmemPtr().off
-      << ")\n";
-
   // prevent loop pointers
   if (this->mark)
     return;
+
+  AlLogger::Logger::getStdErrLogger().d()
+      << "AlgcBlock::doMark(): myBlockOid=("
+      << this->getBackPmemPtr().pool_uuid_lo << ", "
+      << this->getBackPmemPtr().off
+      << ")\n";
+
 
   this->mark = true;
   if (markCallback)
@@ -160,11 +161,11 @@ void AlgcBlock::doMark(std::function<void (pmem::obj::persistent_ptr<void>)> mar
     if (childUserPtr == nullptr)
       return;
     pmem::obj::persistent_ptr<AlgcBlock> childBlkPtr(*childUserPtr);
-    AlLogger::Logger::getStdErrLogger().d()
-        << "AlgcBlock::doMark(): childBlock=("
-        << std::hex << childBlkPtr.raw().pool_uuid_lo << ", "
-        << std::hex << childBlkPtr.raw().off
-        << ")\n";
+//    AlLogger::Logger::getStdErrLogger().d()
+//        << "AlgcBlock::doMark(): childBlock=("
+//        << childBlkPtr.raw().pool_uuid_lo << ", "
+//        << childBlkPtr.raw().off
+//        << ")\n";
     childBlkPtr->doMark(markCallback);
   }
 }
