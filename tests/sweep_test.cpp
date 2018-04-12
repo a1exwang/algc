@@ -25,7 +25,10 @@ int main() {
   uint64_t offsets[] = {(uint64_t)offsetOf(&SingleListNode::next)};
 
   /** User code */
-  pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> head = gc.allocate<SingleListNode>(offsets, 1);
+  pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> head(nullptr);
+  pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
+    gc.allocate<SingleListNode>(offsets, 1);
+  });
   auto node = head;
   head->block()->id = -1;
   head->data.data = -1;
@@ -33,16 +36,18 @@ int main() {
 
   vector<pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>>> ptrs;
   for (int i = 0; i < 10; ++i) {
-    auto newNode = gc.allocate<SingleListNode>(offsets, 1);
+    pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> newNode(nullptr);
+    pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
+      newNode = gc.allocate<SingleListNode>(offsets, 1);
+    });
     auto nodeBlock = newNode->block();
     nodeBlock->id = i;
 
-    pmem::obj::transaction::exec_tx(gc.getPool(), [&] {
-      newNode->data.next = nullptr;
-      newNode->data.data = i;
-      node->data.next = newNode;
-      node = newNode;
-    });
+    newNode->data.next = nullptr;
+    newNode->data.data = i;
+
+    node->data.next = newNode;
+    node = newNode;
     ptrs.push_back(newNode);
   }
 
@@ -52,11 +57,11 @@ int main() {
 
   pmem::obj::persistent_ptr<AlgcPmemObj<SingleListNode>> n = head;
   while(n != nullptr) {
-    logger.i() << "SingleListNode: data=" << n->data.data
-               << ", blk_oid=(" << std::hex << n->oid.pool_uuid_lo << ", "
-               << std::hex << n->oid.off << "), user_oid=("
-               << std::hex << n->block()->data.raw().pool_uuid_lo << ", "
-               << std::hex << n->block()->data.raw().off << ")\n";
+//    logger.i() << "SingleListNode: data=" << n->data.data
+//               << ", blk_oid=(" << std::hex << n->blockOid.pool_uuid_lo << ", "
+//               << std::hex << n->blockOid.off << "), user_oid=("
+//               << std::hex << n->block()->data.raw().pool_uuid_lo << ", "
+//               << std::hex << n->block()->data.raw().off << ")\n";
     n = n->data.next;
   }
 

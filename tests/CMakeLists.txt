@@ -24,3 +24,12 @@ add_executable(
         hash_table_test.cpp
 )
 target_link_libraries(hash_table_test hash_table allog algc pmemobj)
+
+add_executable(
+        perf_test
+        perf_test.cpp
+        single_list.h
+        ../misc/tools.cpp
+)
+target_link_libraries(perf_test algc allog pmemobj pmempool pmem)
+

@@ -14,6 +14,6 @@ int64_t stopWatch(std::function<void()> fn) {
 
   auto duration = duration_cast<microseconds>( t2 - t1 ).count();
 
-  cout << duration/1000.0 << "ms" << endl;
+  cout << duration/1000.0 << "" << endl;
   return duration;
 }
